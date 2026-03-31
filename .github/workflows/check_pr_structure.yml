@@ -1,0 +1,51 @@
+name: Check PR Structure
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate-structure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Check file paths and surname consistency
+        run: |
+          FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
+
+          if [ -z "$FILES" ]; then
+            echo "Нет измененных файлов. Проверка пройдена."
+            exit 0
+          fi
+
+          SURNAMES=()
+
+          while IFS= read -r file; do
+            if ! [[ $file =~ ^sem[0-9]+/[^/]+/[^/]+/ ]]; then
+              echo "ОШИБКА: Файл '$file' не соответствует структуре sem№/subject/surname/"
+              echo "   Файлы должны лежать только внутри папок студентов."
+              exit 1
+            fi
+
+            surname=$(echo $file | cut -d'/' -f3)
+            SURNAMES+=("$surname")
+            
+            echo "   Файл: $file -> Фамилия: $surname"
+          done <<< "$FILES"
+
+          UNIQUE_SURNAMES=($(printf "%s\n" "${SURNAMES[@]}" | sort -u))
+          UNIQUE_COUNT=${#UNIQUE_SURNAMES[@]}
+
+          # 4. Проверка: фамилия должна быть только одна
+          if [ $UNIQUE_COUNT -ne 1 ]; then
+            echo "ОШИБКА: PR затрагивает файлы разных студентов!"
+            echo "   Нельзя менять файлы в папках: ${UNIQUE_SURNAMES[*]}"
+            exit 1
+          fi
+
+          echo "Проверка пройдена. Все файлы принадлежат студенту: ${UNIQUE_SURNAMES[0]}"
